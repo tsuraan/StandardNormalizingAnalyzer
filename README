@@ -1,0 +1,2 @@
+An analyzer for Lucene that adds a Unicode normalization phase to the common
+StandardAnalyzer
