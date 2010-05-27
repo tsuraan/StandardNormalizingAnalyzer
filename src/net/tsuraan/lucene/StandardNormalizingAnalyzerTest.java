@@ -20,7 +20,7 @@ public class StandardNormalizingAnalyzerTest
 
   public StandardNormalizingAnalyzerTest() {
     this.parser = new QueryParser(Version.LUCENE_30, this.field,
-        new StandardNormalizingAnalyzer(Version.LUCENE_30));
+        new StandardNormalizingAnalyzer());
   }
 
   /** Ensure that the basic indexing/searching things still work nicely. */
@@ -72,7 +72,7 @@ public class StandardNormalizingAnalyzerTest
   @Before public void setup() throws Throwable {
     this.writer = new IndexWriter(
         new RAMDirectory(),
-        new StandardNormalizingAnalyzer(Version.LUCENE_30),
+        new StandardNormalizingAnalyzer(),
         true,
         IndexWriter.MaxFieldLength.UNLIMITED);
   }

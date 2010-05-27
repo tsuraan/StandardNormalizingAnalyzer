@@ -1,58 +1,87 @@
 package net.tsuraan.lucene;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.StandardFilter;
+import org.apache.lucene.analysis.LowerCaseFilter;
+import org.apache.lucene.analysis.StopFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.util.Version;
 import java.util.Set;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.File;
 
-/** This is an analyzer that wraps the StandardAnalyzer with a final Unicode
- * NormalizingFilter, so that unicode entities that don't make sense, like
- * ligatures or wide ascii characters, are replaced with sane versions of
- * themselves.  This uses the default normalization of the NormalizingFilter,
- * which is NFKC.  If that's undesirable, it's pretty easy to change.
+/** This analyzer mimics the behaviour of the built-in StandardAnalyzer, but
+ * tacks a final NormalizingFilter onto the end of the filter chain so that any
+ * funny unicode entities are replaced with good characters instead.  This
+ * class isn't as flexible as the real StandardAnalyzer; Version is hard-coded
+ * to 3.0, stopwords aren't configurable, and it also uses the default mode of
+ * the Normalizing Filter.  Adding those options into the constructor wouldn't
+ * be a ton of work, but I just don't need it.
  */
-public class StandardNormalizingAnalyzer extends StandardAnalyzer
+public final class StandardNormalizingAnalyzer extends Analyzer
 {
-  public StandardNormalizingAnalyzer(Version v)
-  {
-    super(v);
-  }
+  private final boolean replaceInvalidAcronym = true;
+  private final boolean enableStopPositionIncrements;
+  private final Version matchVersion = Version.LUCENE_30;
+  private static final int DEFAULT_MAX_TOKEN_LENGTH = 255;
+  private int maxTokenLength = DEFAULT_MAX_TOKEN_LENGTH;
 
-  public StandardNormalizingAnalyzer(Version v, Set<?> stopWords)
+  public StandardNormalizingAnalyzer()
   {
-    super(v, stopWords);
-  }
-
-  public StandardNormalizingAnalyzer(Version v, File stopwords)
-    throws IOException
-  {
-    super(v, stopwords);
-  }
-
-  public StandardNormalizingAnalyzer(Version v, Reader stopwords)
-    throws IOException
-  {
-    super(v, stopwords);
+    this.enableStopPositionIncrements =
+      StopFilter.getEnablePositionIncrementsVersionDefault(matchVersion);
   }
 
   @Override
-  public TokenStream tokenStream(String fieldName, Reader reader) {
-    return new NormalizingFilter(super.tokenStream(fieldName, reader));
+  public TokenStream tokenStream(String _fieldName, Reader reader)
+  {
+    Streams streams = genStreams(reader);
+    streams.tokenStream.setMaxTokenLength(this.maxTokenLength);
+    return streams.filteredTokenStream;
   }
 
   @Override
-  public TokenStream reusableTokenStream(String fieldName, Reader reader)
+  public TokenStream reusableTokenStream(String _fieldName, Reader reader)
     throws IOException
   {
-    /* This uses the parent's reusable token stream, but makes a new
-     * NormalizingFilter.  That's probably not the right way to do things, but
-     * I'm not entirely sure why StandardAnalyzer's reusableTokenStream is so
-     * complicated, so I don't know exactly what the right thing to do here is.
-     */
-    return new NormalizingFilter(super.reusableTokenStream(fieldName, reader));
+    Streams streams = (Streams)getPreviousTokenStream();
+    if(streams == null) {
+      streams = genStreams(reader);
+      setPreviousTokenStream(streams);
+    }
+    else {
+      streams.tokenStream.reset(reader);
+    }
+    streams.tokenStream.setMaxTokenLength(this.maxTokenLength);
+    streams.tokenStream.setReplaceInvalidAcronym(this.replaceInvalidAcronym);
+    return streams.filteredTokenStream;
+  }
+
+  private final class Streams
+  {
+    StandardTokenizer tokenStream;
+    TokenStream filteredTokenStream;
+  }
+
+  /** Generate a new token stream and filter chain for it
+   */
+  private Streams genStreams(Reader reader)
+  {
+    Streams streams = new Streams();
+    streams.tokenStream = new StandardTokenizer(this.matchVersion, reader);
+    streams.filteredTokenStream = new StandardFilter(streams.tokenStream);
+    streams.filteredTokenStream = new NormalizingFilter(
+        streams.filteredTokenStream);
+    streams.filteredTokenStream = new LowerCaseFilter(
+        streams.filteredTokenStream);
+    streams.filteredTokenStream = new StopFilter(
+        this.enableStopPositionIncrements,
+        streams.filteredTokenStream,
+        StandardAnalyzer.STOP_WORDS_SET);
+    return streams;
   }
 }
